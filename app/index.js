@@ -9,7 +9,9 @@ var https = require("https");
 var url = require("url");
 var StringDecoder = require("string_decoder").StringDecoder;
 var config = require("./config");
-var fs = require("fs")
+var fs = require("fs");
+var _data = require("./lib/data");
+
 
 // Instanciate HTTP Server
 var httpServer = http.createServer(function(req, res) {
