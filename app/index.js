@@ -10,7 +10,8 @@ var url = require("url");
 var StringDecoder = require("string_decoder").StringDecoder;
 var config = require("./config");
 var fs = require("fs");
-var _data = require("./lib/data");
+var handlers = require("./lib/handlers");
+var helper = require("./lib/helpers")
 
 
 // Instanciate HTTP Server
@@ -64,10 +65,11 @@ var unifiedServer = function(req, res) {
         var chosenHandler = typeof (router[trimmedPath]) !== 'undefined' ? router[trimmedPath] : handlers.notFound;
     
         var data = {
-            trimmedPath, queryStringObject,
+            trimmedPath,
+            queryStringObject,
             method,
             headers,
-            payload: buffer
+            payload: helper.parseJsonToObject(buffer)
         };
     
         chosenHandler(data, function(statusCode, payload) {
@@ -87,17 +89,7 @@ var unifiedServer = function(req, res) {
     });
 };
 
-var handlers = {};
-
-// Ping handler
-handlers.ping = function(data, callback) {
-    callback(200);
-};
-
-handlers.notFound = function(data, callback) {
-    callback(404);
-};
-
 var router = {
-    ping: handlers.ping
+    ping: handlers.ping,
+    users: handlers.users
 };
