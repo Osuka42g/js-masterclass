@@ -42,6 +42,27 @@ helpers.validatePhone = function (phone) {
     return validatePhone(phone);
 } 
 
+helpers.validateStringField = function (str) {
+    return validateStringField(str);
+}
+
+helpers.createRandomString = function (stringLength) {
+    stringLength = typeof (stringLength) === 'number' && stringLength > 0 ? stringLength : false;
+    if (!stringLength) {
+        return false;
+    }
+
+    var possibleCharacters = 'abcdefghijkmnlopqrstuwxyz1234567890';
+    var str = '';
+    for (var i = 0; i < stringLength; i++) {
+        var randomCharacter = possibleCharacters.charAt(Math.floor(Math.random() * possibleCharacters.length));
+
+        str += randomCharacter;
+    }
+
+    return str;
+}
+
 function validateStringField(name) {
     return typeof (name) === "string" && name.trim().length > 0 ? name : false;
 }
