@@ -1,2 +1,4 @@
 app/https/cert.pem
 app/https/key.pem
+
+app/.data/*/*.json
