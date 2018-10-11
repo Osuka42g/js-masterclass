@@ -4,6 +4,8 @@
  */
 var crypto = require("crypto");
 var config = require("../config");
+var querystring = require("querystring");
+var https = require("https");
 
 var helpers = {};
 
@@ -98,6 +100,53 @@ helpers.validateTimeoutSeconds = function (timeout) {
 
 helpers.validateUserChecks = function (checks) {
     return validateUserChecks(checks);
+}
+
+helpers.sendTwilioSms = function (phone, message, callback) {
+    phone = validatePhone(phone);
+    message = validateStringField(message);
+
+    if (!phone || !message) {
+        return callback( { "Error":"Phone or msg missing" } );
+    }
+
+    var payload = {
+        From: config.twilio.fromPhone,
+        To: '+1' + phone,
+        Body: message
+    }
+
+    var stringPayload = querystring.stringify(payload);
+
+    var requestDetails = {
+        protocol: "https:",
+        hostname: "api.twilio.com",
+        method: "POST",
+        path: "/2010-04-01/Accounts/" + config.twilio.accountSid + "/Messages.json",
+        auth: config.twilio.accountSid + ":" + config.twilio.authToken,
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Lenght": Buffer.byteLength(stringPayload) 
+        }
+    }
+
+    var req = https.request(requestDetails, function (res) {
+        var status = res.statusCode;
+
+        if (status !== 200 && status !== 201) {
+            console.dir(res, false);
+            return callback(JSON.stringify(status));
+        }
+
+        return callback(true);
+    });
+
+    req.on("error", function (e) {
+        callback(e);
+    });
+
+    req.write (stringPayload);
+    req.end();
 }
 
 // Private
