@@ -7,6 +7,8 @@ var config = require("../config");
 
 var helpers = {};
 
+// Public
+
 helpers.hash = function (str) {
     if (typeof(str) !== "string" || str.length === 0) {
         return false;
@@ -25,15 +27,30 @@ helpers.parseJsonToObject = function (str) {
 
 helpers.validateUserData = function (userdata) {
 
-    var validatedData = {}
-
-    validatedData.firstName = validateStringField(userdata.firstName);
-    validatedData.lastName = validateStringField(userdata.lastName);
-    validatedData.phone = validatePhone(userdata.phone);
-    validatedData.password = validateStringField(userdata.password);
-    validatedData.tosAgreement = validateTos(userdata.tosAgreement);
+    var validatedData = {
+        firstName: validateStringField(userdata.firstName),
+        lastName: validateStringField(userdata.lastName),
+        phone: validatePhone(userdata.phone),
+        password: validateStringField(userdata.password),
+        tosAgreement: validateTos(userdata.tosAgreement),
+    }
 
     validatedData.isValid = !Object.values(validatedData).includes(false);
+
+    return validatedData;
+}
+
+helpers.validateChecksData = function (checksdata) {
+
+    var validatedData = {
+        protocol: validateProtocol(checksdata.protocol),
+        url: helpers.validateStringField(checksdata.url),
+        method: helpers.validateMethod(checksdata.method),
+        successCodes: helpers.validateSuccessCodes(checksdata.successCodes),
+        timeoutSeconds: helpers.validateTimeoutSeconds(checksdata.timeoutSeconds),
+    }
+
+    validatedData.areValidAllFields = !Object.values(validatedData).includes(false);
 
     return validatedData;
 }
@@ -61,6 +78,44 @@ helpers.createRandomString = function (stringLength) {
     }
 
     return str;
+}
+
+helpers.validateProtocol = function (str) {
+    return validateProtocol(str);
+}
+
+helpers.validateMethod = function (str) {
+    return typeof (str) === "string" && ["post", "get", "put", "delete"].includes(str) ? str : false;
+}
+
+helpers.validateSuccessCodes = function (codes) {
+    return validateSuccessCodes(codes);
+}
+
+helpers.validateTimeoutSeconds = function (timeout) {
+    return validateTimeoutSeconds(timeout);
+}
+
+helpers.validateUserChecks = function (checks) {
+    return validateUserChecks(checks);
+}
+
+// Private
+
+function validateProtocol (str) {
+    return typeof (str) === "string" && ["http", "https"].includes(str) ? str : false;
+}
+
+function validateUserChecks (checks) {
+    return typeof (checks) === 'object' && checks instanceof Array ? checks : [];
+}
+
+function validateTimeoutSeconds (timeout) {
+    return typeof (timeout) === "number" && timeout % 1 === 0 && timeout > 0 && timeout < 6 ? timeout : false;
+}
+
+function validateSuccessCodes(codes) {
+    return codes instanceof Array && codes.length > 0 ? codes : false;
 }
 
 function validateStringField(name) {

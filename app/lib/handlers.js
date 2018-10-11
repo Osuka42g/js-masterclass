@@ -6,10 +6,12 @@
 // Dependencies
 var _data = require("./data")
 var helpers = require("./helpers")
+var config = require("../config")
 
 // Define handlers
 var handlers = {};
 
+// Users handler
 handlers.users = function (data, callback) {
     var acceptableMethods = ['post', 'get', 'put', 'delete'];
 
@@ -145,7 +147,6 @@ handlers._users.put = function (data, callback) {
     });
 }
 
-// @TODO Only let auth users to delete their data
 handlers._users.delete = function (data, callback) {
     var phone = helpers.validatePhone(data.payload.phone);
 
@@ -160,13 +161,47 @@ handlers._users.delete = function (data, callback) {
             return callback(400, { "Error": "Invalid or expired token" });
         }
 
-        _data.delete("users", phone, function (err) {
-            return err ? callback(500, {"Error": "Could not delete user"}) : callback(200, {});
+        _data.read("users", phone, function(err, userData){
+            if (err || !userData) {
+                return callback(400, {"Error": "User not found"});
+            }
+
+            _data.delete("users", phone, function (err) {
+                if (err) {
+                    return callback(500, { "Error": "Could not delete user" }) ;
+                }
+
+                var userChecks = helpers.validateUserChecks(userData.checks);
+                var checksToDelete = userChecks.length;
+
+                if (checksToDelete === 0) {
+                    return callback(200);
+                }
+
+                var checksDeleted = 0;
+                var deletionsErrors = false;
+
+                userChecks.forEach(function (checkId) {
+                    _data.delete("checks", checkId, function (err) {
+                        if (err) {
+                            deletionsErrors = true;
+                        }
+
+                        checksDeleted++;
+                        if (checksDeleted === checksToDelete) {
+                            if (deletionsErrors) {
+                                return callback(500, {"Error": "All checks might be not deleted properly"});
+                            }
+                            return callback(200)
+                        }
+                    });
+                });
+            });
         });
     });
 }
 
-// Tokens
+// Tokens handler
 handlers.tokens = function (data, callback) {
     var acceptableMethods = ['post', 'get', 'put', 'delete'];
 
@@ -301,6 +336,200 @@ handlers._tokens.verifyToken = function(idToken, phone, callback) {
 
         callback(true);
     });
+}
+
+
+// Checks handler
+handlers.checks = function (data, callback) {
+    var acceptableMethods = ['post', 'get', 'put', 'delete'];
+
+    if (acceptableMethods.includes(data.method)) {
+        return handlers._checks[data.method](data, callback);
+    }
+
+    callback(405);
+};
+
+// Container for all the checks methods
+handlers._checks = {}
+
+// Checks post
+// Create a new check
+handlers._checks.post = function (data, callback) {
+
+    var { protocol, url, method, successCodes, timeoutSeconds, areValidAllFields } = helpers.validateChecksData(data.payload);
+
+    if (!areValidAllFields) {
+        return callback(400, {"Error": "Invalid or missing data"});
+    }
+
+    var token = helpers.validateStringField(data.headers.token);
+
+    _data.read('tokens', token, function(err, tokenData) {
+        if (err || !tokenData) {
+            return callback(400, {"Error": "Undefined token"});
+        }
+
+        var userPhone = tokenData.phone;
+
+        _data.read('users', userPhone, function(err, userData) {
+            var checks = helpers.validateUserChecks(userData.checks);
+
+            if (checks.length >= config.maxChecks) {
+                return callback(400, {"Error": "Maximum number of checks reached ("+config.maxChecks+")"});
+            }
+
+            var checkId = helpers.createRandomString(20);
+
+            var checkObject = {
+                id: checkId,
+                userPhone: userPhone,
+                protocol: protocol,
+                url: url,
+                method: method,
+                successCodes: successCodes,
+                timeoutSeconds: timeoutSeconds
+            }
+
+            _data.create("checks", checkId, checkObject, function(err) {
+                if (err) {
+                    return callback(500, {"Error": "Oops!"});
+                }
+
+                userData.checks = checks;
+                userData.checks.push(checkId);
+
+                _data.update("users", userData.phone, userData, function (err){
+                    if (err) {
+                        return callback(500, {"Error": "Update userdata with new checks"});
+                    }
+
+                    return callback(200, checkObject);
+                }) 
+            });
+        });
+    });
+};
+
+
+handlers._checks.get = function (data, callback) {
+    var id = helpers.validateStringField(data.queryStringObject.id);
+
+    if (!id) {
+        return callback(400, { "Error": "Invalid id" });
+    }
+
+    _data.read('checks', id, function (err, checkData) {
+        if (err || !checkData) {
+            callback(400);
+        }
+        // Get the token from the headers
+        var token = helpers.validateStringField(data.headers.token);
+    
+        handlers._tokens.verifyToken(token, checkData.phone, function (isValidToken) {
+            if (!isValidToken) {
+                return callback(403, { "Error": "Invalid or expired token" });
+            }
+            
+            return callback(200, checkData);
+        });
+    });
+}
+
+handlers._checks.put = function (data, callback) {
+    var id = helpers.validateStringField(data.payload.id);
+    var { protocol, url, method, successCodes, timeoutSeconds } = helpers.validateChecksData(data.payload);
+
+    if (!id) {
+        return callback(400, {"Error": "Missing required fields"});
+    }
+
+    if (!protocol && !url && !method && !successCodes && !timeoutSeconds) {
+        return callback(400, {"Error": "Missing fields to update"});
+    }
+
+    _data.read("checks", id, function (err, checkData) {
+        if (err || !checkData) {
+            return callback(400, {"Error": "CheckId does not exist"});
+        }
+
+        var token = helpers.validateStringField(data.headers.token);
+
+        handlers._tokens.verifyToken(token, checkData.phone, function (isValidToken) {
+            if (!isValidToken) {
+                return callback(403, { "Error": "Invalid or expired token" });
+            }
+
+            if (protocol) checkData.protocol = protocol;
+            if (url) checkData.url = url;
+            if (method) checkData.method = method;
+            if (successCodes) checkData.successCodes = successCodes;
+            if (timeoutSeconds) checkData.timeoutSeconds = timeoutSeconds;
+
+            _data.update("checks", id, checkData, function(err) {
+                if (err) {
+                    return callback(500, {"Error": "Could not update the check"})
+                }
+                return callback(200, checkData);
+            });
+        });
+    });
+}
+
+
+handlers._checks.delete = function (data, callback) {
+    // Check that the phone number is valid
+    var id = helpers.validateStringField(data.queryStringObject.id);
+
+    if (!id) {
+        return callback(400, { "Error": "Invalid id" });
+    }
+
+    _data.read("checks", id, function (err, checkData) {
+        if (err || !checkData) {
+            return callback(400, {"Error": "Provided check data does not exist"});
+        }
+
+        // Get the token from the headers
+        var token = helpers.validateStringField(data.headers.token);
+
+        handlers._tokens.verifyToken(token, checkData.userPhone, function (isValidToken) {
+            if (!isValidToken) {
+                return callback(403, { "Error": "Invalid or expired token" });
+            }
+
+            _data.delete("checks", id, function (err) {
+                if (err) {
+                    return callback(500, { "Error": "Could not delete the check" });
+                }
+
+                _data.read("users", checkData.userPhone, function (err, userData) {
+                    if (err || !userData) {
+                        return callback(500, {"Error": "Could not read user data"});
+                    }
+
+                    var checks = helpers.validateUserChecks(userData.checks);
+                    var checkPosition = checks.indexOf(id);
+
+                    if (checkPosition < 0) {
+                        return callback(500, {"Error": "Could not update user"});
+                    }
+
+                    checks.splice(checkPosition, 1);
+                    userData.checks = checks;
+
+                    _data.update("users", userData.phone, userData, function(err) {
+                        if (err) {
+                            return callback(500, {"Error": "Could not update user checks"});
+                        }
+
+                        return callback(200);
+                    });
+                });
+            });
+        });
+    });
+
 }
 
 // Ping handler
